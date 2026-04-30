@@ -2,7 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Models\Search;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -13,23 +12,21 @@ class RunScraperJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected $query;
-    protected $searchId;
+    public $timeout = 600;
+    public $tries   = 1;
 
-    public function __construct($query, $searchId)
-    {
-        $this->query = $query;
-        $this->searchId = $searchId;
-    }
+    public function __construct(
+        public string $query,
+        public int    $searchId,
+        public int    $offset = 0
+    ) {}
 
-    public function handle()
-    {
-        $pythonPath = "C:\\Python314\\python.exe";
-        $scriptPath = "D:\\internship\\google-maps-extractor - Copy\\scraper\\main.py";
-
-        $command = "\"$pythonPath\" \"$scriptPath\" \"$this->query\" \"$this->searchId\"";
-
-        // ✅ RUN SILENTLY (NO TERMINAL)
-        exec($command);
-    }
+    public function handle(): void
+{
+    $pythonPath = "C:\\Python314\\python.exe";
+    $scriptPath = "D:\\internship\\google-maps-extractor - Copy\\scraper\\main.py";
+    
+    $command = "start /B \"\" \"{$pythonPath}\" \"{$scriptPath}\" \"{$this->query}\" \"{$this->searchId}\" \"{$this->offset}\"";
+    pclose(popen($command, "r"));
+}
 }
