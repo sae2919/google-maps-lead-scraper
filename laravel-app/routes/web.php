@@ -45,7 +45,12 @@ Route::get('/', function () {
 Route::middleware(['auth'])->group(function () {
 
     // ── Dashboard ────────────────────────────────────────────────────────
-    Route::get('/dashboard', [LeadController::class, 'dashboard'])->name('dashboard');
+    Route::get('/dashboard', function () {
+        if (auth()->user()->role === 'admin') {
+            return redirect('/admin/dashboard');
+        }
+        return app(\App\Http\Controllers\LeadController::class)->dashboard();
+    })->name('dashboard');
     Route::get('/search-page', fn() => view('welcome'))->name('search.page');
 
     // ── Scraper Operations ───────────────────────────────────────────────
@@ -79,8 +84,6 @@ Route::middleware(['auth'])->group(function () {
 
     // Bulk Generation (called from results page JS)
     Route::post('/generate-bulk-websites', [LeadController::class, 'generateBulkWebsites']);
-    Route::post('/delete-search/{id}', [LeadController::class, 'deleteSearch']);
-Route::post('/delete-all-searches', [LeadController::class, 'deleteAllSearches']);
 });
 
 /*
