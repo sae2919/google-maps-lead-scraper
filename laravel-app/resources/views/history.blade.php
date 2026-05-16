@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Search History | Lead Generator</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -95,7 +96,7 @@
             </div>
         </header>
 
-        <main class="p-8 max-w-5xl mx-auto w-full">
+        <main class="p-8 max-w-5xl mx-auto w-full pb-24">
 
             <div class="mb-8 flex items-center justify-between flex-wrap gap-4">
                 <p class="text-slate-500 text-sm">Manage and revisit your previous lead extraction tasks.</p>
@@ -197,15 +198,12 @@
                     {{-- RIGHT: Actions --}}
                     <div class="flex gap-2 items-center flex-shrink-0 ml-4">
 
-                        {{-- Resume button — only if paused or stopped and has leads --}}
+                        {{-- 🔥 Resume button — AJAX, no page navigation --}}
                         @if(($search->is_stopped || $search->is_paused) && !$isCompleted)
-                        <form action="/resume-search/{{ $search->id }}" method="POST">
-                            @csrf
-                            <button type="submit"
-                                class="text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white px-4 py-2 rounded-xl transition-all border border-emerald-200">
-                                ▶ Resume
-                            </button>
-                        </form>
+                        <button onclick="resumeSearch({{ $search->id }}, '{{ addslashes($search->query) }}', this)"
+                            class="text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-600 hover:text-white px-4 py-2 rounded-xl transition-all border border-emerald-200 flex items-center gap-1.5">
+                            ▶ Resume
+                        </button>
                         @endif
 
                         {{-- View Results --}}
@@ -224,16 +222,15 @@
                         </a>
 
                         {{-- Delete --}}
-                        <form action="/delete-search/{{ $search->id }}" method="POST" onsubmit="return confirmDelete()">
+                        <form action="/delete-search/{{ $search->id }}" method="POST">
                             @csrf
                             <button type="submit"
-                                class="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                                title="Delete">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                                </svg>
+                                onclick="return confirm('Delete this search?')"
+                                class="text-xs font-bold text-red-600 bg-red-50 hover:bg-red-600 hover:text-white px-4 py-2 rounded-xl transition-all border border-red-200">
+                                Delete
                             </button>
                         </form>
+
                     </div>
 
                 </div>
@@ -261,6 +258,8 @@
 </div>
 
 <script>
+const CSRF = document.querySelector('meta[name="csrf-token"]').content;
+
 function toggleProfileMenu() {
     document.getElementById("profileMenu").classList.toggle("hidden");
 }
@@ -280,7 +279,41 @@ function confirmDelete() {
 function confirmDeleteAll() {
     return confirm("This will permanently erase your ENTIRE search history and all leads. Are you sure?");
 }
+
+// 🔥 AJAX resume — no page navigation, registers global bar, goes to results
+async function resumeSearch(id, query, btn) {
+    if (!confirm('Resume scraping for this search?')) return;
+
+    btn.disabled  = true;
+    btn.innerText = 'Starting...';
+
+    try {
+        const res  = await fetch('/resume-search/' + id, {
+            method:  'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': CSRF
+            }
+        });
+        const data = await res.json();
+
+        if (data.status === 'resumed') {
+            window.registerActiveSearch(id, query);
+            window.location.href = '/results/' + id;
+        } else {
+            alert('Failed to resume.');
+            btn.disabled  = false;
+            btn.innerText = '▶ Resume';
+        }
+
+    } catch (err) {
+        alert('Error: ' + err.message);
+        btn.disabled  = false;
+        btn.innerText = '▶ Resume';
+    }
+}
 </script>
 
+@include('partials.global-bar')
 </body>
 </html>

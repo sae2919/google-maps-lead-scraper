@@ -23,10 +23,62 @@ class RunScraperJob implements ShouldQueue
 
     public function handle(): void
 {
-    $pythonPath = "C:\\Python314\\python.exe";
-    $scriptPath = "D:\\internship\\google-maps-extractor - Copy\\scraper\\main.py";
-    
-    $command = "start /B \"\" \"{$pythonPath}\" \"{$scriptPath}\" \"{$this->query}\" \"{$this->searchId}\" \"{$this->offset}\"";
-    pclose(popen($command, "r"));
+    try {
+
+        // 🔥 Update status to processing
+        \App\Models\Search::where('id', $this->searchId)
+            ->update([
+                'status' => 'processing'
+            ]);
+
+        $pythonPath = "C:\\Python314\\python.exe";
+
+        $scriptPath = "D:\\internship\\google-maps-extractor - Copy\\scraper\\main.py";
+
+        /**
+         * ============================================
+         * 🔥 NORMAL EXECUTION (WAIT FOR COMPLETION)
+         * ============================================
+         */
+
+        $command = "\"{$pythonPath}\" \"{$scriptPath}\" \"{$this->query}\" \"{$this->searchId}\" \"{$this->offset}\"";
+
+        exec($command, $output, $resultCode);
+
+        /**
+         * ============================================
+         * 🔥 UPDATE FINAL STATUS
+         * ============================================
+         */
+
+        $search = \App\Models\Search::find($this->searchId);
+
+        if ($search) {
+
+            $totalLeads = \App\Models\Lead::where(
+                'search_id',
+                $this->searchId
+            )->count();
+
+            $search->update([
+
+                'status' => 'completed',
+
+                'processed_count' => $totalLeads,
+
+                'total_places' => $totalLeads
+
+            ]);
+        }
+
+    } catch (\Exception $e) {
+
+        \Log::error($e->getMessage());
+
+        \App\Models\Search::where('id', $this->searchId)
+            ->update([
+                'status' => 'failed'
+            ]);
+    }
 }
 }

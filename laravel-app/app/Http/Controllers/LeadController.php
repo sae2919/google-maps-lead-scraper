@@ -1,7 +1,7 @@
 <?php
 
 namespace App\Http\Controllers;
-
+use App\Jobs\ScrapeLeadJob;
 use App\Models\Search;
 use App\Models\Lead;
 use Illuminate\Http\Request;
@@ -17,31 +17,52 @@ class LeadController extends Controller
     // =========================================================================
     // SEARCH — start a new scrape
     // =========================================================================
-    public function search(Request $request)
-    {
-        try {
-            $query = $request->input('query');
-            if (!$query) return response()->json(['error' => 'Query missing'], 400);
+    
 
-            $search = Search::create([
-                'query'        => $query,
-                'user_id'      => auth()->id() ?? 1,
-                'is_stopped'   => false,
-                'is_paused'    => false,
-                'total_places' => 0,
-            ]);
+public function search(Request $request)
+{
+    try {
 
-            $totalEstimate = rand(80, 150);
-            Search::where('id', $search->id)->update(['total_places' => $totalEstimate]);
+        $query = trim($request->input('query'));
 
-            $this->launchScraper($query, $search->id, 0);
-
-            return response()->json(['id' => $search->id, 'total' => $totalEstimate]);
-
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
+        if (!$query) {
+            return response()->json([
+                'success' => false,
+                'error'   => 'Query missing'
+            ], 400);
         }
+
+        $search = Search::create([
+            'query'           => $query,
+            'user_id'         => auth()->id() ?? 1,
+            'status'          => 'running',
+            'is_stopped'      => false,
+            'is_paused'       => false,
+            'processed_count' => 0,
+            'total_places'    => 0,
+        ]);
+
+        ScrapeLeadJob::dispatch($search->id, $query);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Scraping started in background',
+            'id'      => $search->id,
+            'query'   => $query,
+            'status'  => 'running',
+            'total'   => 0
+        ]);
+
+    } catch (\Exception $e) {
+
+        Log::error('Search Error: ' . $e->getMessage());
+
+        return response()->json([
+            'success' => false,
+            'error'   => $e->getMessage()
+        ], 500);
     }
+}
 
     // =========================================================================
     // STOP
@@ -65,15 +86,21 @@ class LeadController extends Controller
     // RESUME
     // =========================================================================
     public function resume($id)
-    {
-        $search = Search::findOrFail($id);
-        $offset = Lead::where('search_id', $id)->count();
+{
+    $search = Search::findOrFail($id);
 
-        $search->update(['is_stopped' => false, 'is_paused' => false, 'total_places' => 0]);
-        $this->launchScraper($search->query, $id, $offset);
+    $search->update([
+        'is_stopped' => false,
+        'is_paused'  => false,
+        'status'     => 'running'
+    ]);
 
-        return response()->json(['status' => 'resumed', 'offset' => $offset]);
-    }
+    ScrapeLeadJob::dispatch($search->id, $search->query);
+
+    return response()->json([
+        'status' => 'resumed'
+    ]);
+}
 
     // =========================================================================
     // STATUS — called by Python scraper
@@ -94,25 +121,76 @@ class LeadController extends Controller
     // PROGRESS — polled by frontend
     // =========================================================================
     public function progress($id)
-    {
-        $search   = Search::find($id);
-        $progress = Lead::where('search_id', $id)->count();
-        $total    = $search->total_places ?? 0;
+{
+    $search = Search::find($id);
 
-        if ($progress > $total && $total > 0) {
-            $total = $progress;
-            $search->update(['total_places' => $total]);
-        }
+    if (!$search) {
 
-        $isCompleted = $search->is_stopped && $total > 0 && $progress >= $total;
-
-        if ($isCompleted)            $status = 'COMPLETED';
-        elseif ($search->is_stopped) $status = 'STOPPED';
-        elseif ($search->is_paused)  $status = 'PAUSED';
-        else                         $status = 'RUNNING';
-
-        return response()->json(['progress' => $progress, 'total' => $total, 'status' => $status]);
+        return response()->json([
+            'progress' => 0,
+            'total'    => 0,
+            'found'    => 0,
+            'status'   => 'NOT_FOUND'
+        ]);
     }
+
+    // 🔥 FOUND LEADS
+    $found = Lead::where(
+        'search_id',
+        $id
+    )->count();
+
+    // 🔥 TOTAL FROM PYTHON
+    $total = (int) (
+        $search->total_places ?? 0
+    );
+
+    // 🔥 PROGRESS %
+    $progressPercent = 0;
+
+    if ($total > 0) {
+
+        $progressPercent = round(
+            ($found / $total) * 100
+        );
+
+        if ($progressPercent > 100) {
+            $progressPercent = 100;
+        }
+    }
+
+    // 🔥 STATUS
+    if ($search->is_stopped) {
+
+        $status = 'STOPPED';
+
+    } elseif ($search->is_paused) {
+
+        $status = 'PAUSED';
+
+    } elseif (
+        $total > 0 &&
+        $found >= $total
+    ) {
+
+        $status = 'COMPLETED';
+
+    } else {
+
+        $status = 'RUNNING';
+    }
+
+    return response()->json([
+
+        'found'    => $found,
+
+        'progress' => $progressPercent,
+
+        'total'    => $total,
+
+        'status'   => $status
+    ]);
+}
 
     // =========================================================================
     // LAUNCH SCRAPER
@@ -134,29 +212,55 @@ private function launchScraper(string $query, int $searchId, int $offset = 0): v
     // =========================================================================
     public function updateTotal(Request $request)
 {
-    $total = $request->input('total_places') ?? $request->input('total');
-    if ($total) {
-        Search::where('id', $request->search_id)
-            ->update(['total_places' => (int) $total]);
-    }
-    return response()->json(['status' => 'updated']);
+    Search::where(
+        'id',
+        $request->search_id
+    )->update([
+
+        'total_places' =>
+        (int) $request->total_places
+    ]);
+
+    return response()->json([
+        'success' => true
+    ]);
 }
 
     // =========================================================================
     // SAVE LEAD — called by Python
     // =========================================================================
     public function saveLead(Request $request)
-    {
-        $data = $request->all();
-        if (isset($data['types'])) {
-            $data['types'] = is_array($data['types']) ? json_encode($data['types']) : $data['types'];
-        }
-        Lead::firstOrCreate(
-            ['maps_url' => $data['maps_url'], 'search_id' => $data['search_id']],
-            $data
-        );
-        return response()->json(['success' => true]);
+{
+    $data = $request->all();
+
+    if (empty($data['maps_url'])) {
+        return response()->json([
+            'success' => false,
+            'message' => 'maps_url missing'
+        ], 400);
     }
+
+    if (isset($data['types'])) {
+        $data['types'] = is_array($data['types'])
+            ? json_encode($data['types'])
+            : $data['types'];
+    }
+
+    Lead::updateOrCreate(
+        [
+            'maps_url' => $data['maps_url'],
+            'search_id' => $data['search_id']
+        ],
+        $data
+    );
+
+    Search::where('id', $data['search_id'])
+        ->increment('processed_count');
+
+    return response()->json([
+        'success' => true
+    ]);
+}
 
     // =========================================================================
     // PAGES
@@ -187,12 +291,19 @@ private function launchScraper(string $query, int $searchId, int $offset = 0): v
     // DELETE — single search + its leads (used from history page)
     // =========================================================================
     public function deleteSearch($id)
-    {
-        $search = Search::findOrFail($id);
-        Lead::where('search_id', $id)->delete();
-        $search->delete();
-        return redirect('/history')->with('success', 'Search deleted successfully.');
+{
+    $search = Search::find($id);
+
+    if (!$search) {
+        return back()->with('error', 'Search not found');
     }
+
+    Lead::where('search_id', $id)->delete();
+
+    $search->delete();
+
+    return back()->with('success', 'Deleted successfully');
+}
 
     // =========================================================================
     // DELETE ALL — all searches + leads for current user
@@ -368,11 +479,49 @@ Return ONLY JSON.";
 
     public function getLeads(Request $request, $id)
     {
-        return response()->json(Lead::where('search_id', $id)->orderBy('id', 'asc')->paginate(10));
+        $query = Lead::where('search_id', $id)
+    ->orderBy('id', 'asc');
+
+
+// 🔥 SOURCE FILTER
+if ($request->source === 'no_website') {
+
+    $query->where(function ($q) {
+
+        $q->whereNull('website')
+          ->orWhere('website', '')
+          ->orWhereRaw('TRIM(website) = ""')
+          ->orWhere('website', '-');
+
+    });
+
+}
+
+if ($request->source === 'has_website') {
+
+    $query->whereNotNull('website')
+          ->where('website', '!=', '');
+
+}
+
+
+// 🔥 RATING FILTER
+if ($request->rating && $request->rating > 0) {
+
+    $query->where('rating', '>=', $request->rating);
+
+}
+
+
+// ✅ FILTER FIRST → PAGINATE
+$leads = $query->paginate(10);
+
+return response()->json($leads);
     }
 
     public function seoPage($city, $service)
     {
         return view('seo.page', compact('city', 'service'));
     }
+    
 }

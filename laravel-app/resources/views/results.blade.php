@@ -43,6 +43,12 @@
         .btn-pause:hover:not(:disabled)  { background: #d97706; color: #fff; }
         .btn-resume { background: #dcfce7; color: #16a34a; }
         .btn-resume:hover:not(:disabled) { background: #16a34a; color: #fff; }
+
+        @keyframes fadeInRow {
+            from { opacity: 0; transform: translateY(-6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .new-row { animation: fadeInRow 0.3s ease; }
     </style>
 </head>
 
@@ -170,8 +176,8 @@
                     <p class="text-3xl font-black text-blue-600" id="leadCount">0</p>
                 </div>
                 <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
-                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Items Processed</p>
-                    <p class="text-3xl font-black text-slate-800" id="progressText">0</p>
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Progress</p>
+                    <p class="text-3xl font-black text-slate-800" id="progressText">0%</p>
                 </div>
                 <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
                     <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Status</p>
@@ -220,15 +226,12 @@ let currentPage      = 1;
 let currentLeadsData = [];
 let selectedLeadIds  = new Set();
 let pollingInterval  = null;
+let leadsInterval    = null;
 let currentStatus    = 'RUNNING';
+let lastFoundCount   = 0;
 
-// ── Flag: only auto-redirect if scraper was RUNNING during this session ───────
-// Prevents redirect loop when navigating to an already-stopped result page
 let wasActiveThisSession = false;
 let redirectScheduled    = false;
-
-document.getElementById('ratingFilter').addEventListener('change', renderTable);
-document.getElementById('sourceFilter').addEventListener('change', renderTable);
 
 function toggleProfileMenu() {
     document.getElementById("profileMenu").classList.toggle("hidden");
@@ -307,48 +310,54 @@ function loadProgress() {
     return fetch(`/api/progress/${searchId}`)
         .then(res => res.json())
         .then(data => {
-            const progress = data.progress || 0;
-            const total    = data.total    || 0;
+            // 🔥 FIX: use correct fields
+            const found    = data.found    || 0;   // actual lead count
+            const total    = data.total    || 0;   // total places from Python
+            const pct      = data.progress || 0;   // percentage 0-100
             let   status   = data.status   || 'RUNNING';
 
-            // ── FRONTEND COMPLETION DETECTION ──────────────────────────────
-            // Treat as completed if progress >= total and both > 0,
-            // regardless of whether the DB flag was set correctly
-            if (status === 'RUNNING' && progress > 0 && total > 0 && progress >= total) {
+            // 🔥 FIX: completion detection uses found vs total (not pct vs total)
+            if (status === 'RUNNING' && found > 0 && total > 0 && found >= total) {
                 status = 'COMPLETED';
-                // Sync with backend
                 fetch(`/api/stop/${searchId}`, {
                     method:  'POST',
                     headers: { 'X-CSRF-TOKEN': csrfToken }
                 }).catch(() => {});
             }
 
-            // If backend says STOPPED and counts match, show COMPLETED instead
-            if (status === 'STOPPED' && progress > 0 && total > 0 && progress >= total) {
+            if (status === 'STOPPED' && found > 0 && total > 0 && found >= total) {
                 status = 'COMPLETED';
             }
 
-            // Update stat cards
-            if (total > 0) document.getElementById("totalPlaces").innerText = total;
-            document.getElementById("progressText").innerText = progress;
-            document.getElementById("leadCount").innerText     = progress;
-            document.getElementById("statusText").innerText    = status;
+            // 🔥 FIX: always show total even if 0 during scroll phase (show live count)
+            document.getElementById("totalPlaces").innerText = total > 0 ? total : '—';
+
+            // 🔥 FIX: leadCount shows actual found count, not percentage
+            document.getElementById("leadCount").innerText  = found;
+
+            // 🔥 FIX: progressText shows percentage with % symbol
+            document.getElementById("progressText").innerText = pct + '%';
+
+            document.getElementById("statusText").innerText = status;
 
             updateControlButtons(status);
 
-            // Track if scraper was live during this session
+            // 🔥 If new leads arrived, reload table automatically on page 1
+            if (found !== lastFoundCount) {
+                lastFoundCount = found;
+                // Only auto-reload table if user is on page 1 to avoid disrupting browsing
+                if (currentPage === 1) {
+                    loadLeads(1);
+                }
+            }
+
             if (status === 'RUNNING' || status === 'PAUSED') {
                 wasActiveThisSession = true;
             }
 
-            // ── STOP POLLING on terminal states ────────────────────────────
             if (status === 'STOPPED' || status === 'COMPLETED') {
-                if (pollingInterval) {
-                    clearInterval(pollingInterval);
-                    pollingInterval = null;
-                }
+                stopAllPolling();
 
-                // ── AUTO-REDIRECT only if scraper ran during this session ───
                 if (wasActiveThisSession && !redirectScheduled) {
                     redirectScheduled = true;
                     const msg = status === 'COMPLETED'
@@ -365,9 +374,18 @@ function loadProgress() {
         });
 }
 
+// ── STOP ALL POLLING ──────────────────────────────────────────────────────────
+function stopAllPolling() {
+    if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null; }
+    if (leadsInterval)   { clearInterval(leadsInterval);   leadsInterval   = null; }
+}
+
 // ── LOAD LEADS TABLE ──────────────────────────────────────────────────────────
 function loadLeads(page = 1) {
-    return fetch(`/api/leads/${searchId}?page=${page}`)
+    const source = document.getElementById('sourceFilter')?.value || '';
+    const rating = document.getElementById('ratingFilter')?.value || '';
+
+    return fetch(`/api/leads/${searchId}?page=${page}&source=${source}&rating=${rating}`)
         .then(res => res.json())
         .then(data => {
             currentLeadsData = data.data || [];
@@ -377,13 +395,14 @@ function loadLeads(page = 1) {
         });
 }
 
+document.getElementById('sourceFilter')?.addEventListener('change', () => { loadLeads(1); });
+document.getElementById('ratingFilter')?.addEventListener('change', () => { loadLeads(1); });
+
 // ── RENDER TABLE ──────────────────────────────────────────────────────────────
 function renderTable() {
     const tbody  = document.getElementById("tableBody");
     const minRat = parseFloat(document.getElementById('ratingFilter').value);
     const srcVal = document.getElementById('sourceFilter').value;
-
-    tbody.innerHTML = "";
 
     const filtered = currentLeadsData.filter(lead => {
         const noWeb = (!lead.website || lead.website === '-' || lead.website.trim() === '');
@@ -399,13 +418,21 @@ function renderTable() {
         return;
     }
 
+    // 🔥 Track existing row IDs to animate only new ones
+    const existingIds = new Set(
+        [...tbody.querySelectorAll('tr[data-id]')].map(r => r.dataset.id)
+    );
+
+    tbody.innerHTML = '';
+
     filtered.forEach(lead => {
         const noWebsite   = (!lead.website || lead.website === '-' || lead.website.trim() === '');
         const isGenerated = lead.website && lead.website.includes('/sites/');
         const isChecked   = selectedLeadIds.has(lead.id.toString()) ? 'checked' : '';
+        const isNew       = !existingIds.has(lead.id.toString());
 
         tbody.innerHTML += `
-        <tr class="hover:bg-blue-50/30 transition-colors group">
+        <tr class="hover:bg-blue-50/30 transition-colors group ${isNew ? 'new-row' : ''}" data-id="${lead.id}">
             <td class="px-8 py-5 text-center">
                 ${(noWebsite || isGenerated)
                     ? `<input type="checkbox" class="lead-checkbox w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" value="${lead.id}" ${isChecked} onchange="handleCheckboxClick(this)">`
@@ -544,13 +571,11 @@ function changePage(p) {
 // ── POLLING ───────────────────────────────────────────────────────────────────
 function startPolling() {
     if (pollingInterval) clearInterval(pollingInterval);
-    pollingInterval = setInterval(async () => {
-        await loadProgress();
-        // Only reload leads if still running
-        if (currentStatus === 'RUNNING' || currentStatus === 'PAUSED') {
-            loadLeads(currentPage);
-        }
-    }, 3000);
+
+    // 🔥 Progress polls every 2s — drives stat card updates + triggers table reload when found count changes
+    pollingInterval = setInterval(() => {
+        loadProgress();
+    }, 2000);
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
@@ -558,14 +583,9 @@ async function init() {
     document.getElementById("statusText").innerText = "Connecting...";
 
     try {
-        // Load leads FIRST — data always shows immediately
-        // regardless of status (fixes blank table when navigating to stopped results)
         await loadLeads(currentPage);
-
-        // Then check status
         await loadProgress();
 
-        // Only start polling if not already in a terminal state
         if (currentStatus === 'RUNNING' || currentStatus === 'PAUSED') {
             startPolling();
         }
@@ -577,5 +597,6 @@ async function init() {
 
 document.addEventListener('DOMContentLoaded', init);
 </script>
+@include('partials.global-bar')
 </body>
 </html>

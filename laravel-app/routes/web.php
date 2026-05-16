@@ -123,3 +123,4 @@ Route::middleware(['auth', 'admin'])->group(function () {
 require __DIR__.'/auth.php';
 
 Route::get('/seo/{city}/{service}', [LeadController::class, 'seoPage']);
+Route::post('/delete-search/{id}', [LeadController::class, 'deleteSearch']);
