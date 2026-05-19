@@ -38,7 +38,7 @@
     </style>
 </head>
 
-<body>
+<body id="top">
 
 <nav class="fixed w-full z-50 bg-black/90 border-b border-white/10">
     <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
@@ -77,7 +77,7 @@
 
     {{-- HERO --}}
     @if($section['type'] == 'hero')
-    <header class="pt-28 pb-12 px-6 max-w-7xl mx-auto">
+    <header id="home" class="pt-28 pb-12 px-6 max-w-7xl mx-auto scroll-mt-24">
         <div class="relative h-[500px] rounded-3xl overflow-hidden">
             <img src="{{ $images[0] }}" class="w-full h-full object-cover">
 
@@ -99,7 +99,7 @@
 
     {{-- ABOUT --}}
     @if($section['type'] == 'about')
-    <section class="py-16 px-6 text-center">
+    <section id="about" class="py-16 px-6 text-center scroll-mt-24">
         <p class="max-w-2xl mx-auto text-gray-300">
             {{ $section['content'] }}
         </p>
@@ -109,7 +109,7 @@
 
     {{-- SERVICES --}}
     @if($section['type'] == 'services')
-    <section class="py-24 px-6 max-w-7xl mx-auto">
+    <section id="services" class="py-24 px-6 max-w-7xl mx-auto scroll-mt-24">
         <h2 class="text-4xl heading-font mb-16 text-center">Services</h2>
 
         <div class="grid md:grid-cols-3 gap-10">
@@ -143,7 +143,7 @@
 
     {{-- GALLERY --}}
     @if($section['type'] == 'gallery')
-    <section class="py-16 px-6 max-w-7xl mx-auto">
+    <section id="gallery" class="py-16 px-6 max-w-7xl mx-auto scroll-mt-24">
         <h2 class="text-3xl heading-font mb-10 text-center">Gallery</h2>
 
         <div class="grid md:grid-cols-4 gap-4">
@@ -172,7 +172,7 @@
 
 
 {{-- CONTACT --}}
-<section id="contact" class="py-24 px-6 bg-zinc-900 border-t border-white/5 text-center">
+<section id="contact" class="py-24 px-6 bg-zinc-900 border-t border-white/5 text-center scroll-mt-24">
     <h2 class="text-4xl heading-font mb-8">Contact</h2>
 
     <p class="text-lg text-gray-300">{{ $lead->address }}</p>
@@ -189,8 +189,98 @@
     </div>
 </section>
 
-<footer class="py-12 border-t border-white/5 text-center text-gray-600 text-xs uppercase tracking-[0.3em]">
-    © {{ date('Y') }} {{ $lead->name }} | AI Generated Site
+<footer class="bg-[#020B2D] text-white pt-20 pb-32 px-6 relative">
+
+    <div class="max-w-7xl mx-auto grid md:grid-cols-3 gap-16">
+
+        {{-- LEFT --}}
+        <div>
+            <h2 class="text-4xl heading-font leading-tight mb-6">
+                {{ $lead->name }}
+            </h2>
+
+            <p class="text-gray-400 text-lg">
+                Your secure and comfortable destination in
+                {{ $lead->main_area ?? 'your area' }}.
+            </p>
+        </div>
+
+        {{-- QUICK LINKS --}}
+        <div>
+            <h3 class="text-sm uppercase tracking-[0.2em] text-gray-400 mb-6">
+                Quick Links
+            </h3>
+
+            <ul class="space-y-4 text-lg">
+
+                <li>
+                    <a href="#top"
+   class="hover:text-blue-400 transition duration-300">
+    Home
+</a>
+                </li>
+
+                <li>
+                    <a href="#about"
+                       class="hover:text-blue-400 transition duration-300">
+                        About
+                    </a>
+                </li>
+
+                <li>
+                    <a href="#services"
+                       class="hover:text-blue-400 transition duration-300">
+                        Services
+                    </a>
+                </li>
+
+                <li>
+                    <a href="#gallery"
+                       class="hover:text-blue-400 transition duration-300">
+                        Gallery
+                    </a>
+                </li>
+
+                <li>
+                    <a href="#contact"
+                       class="hover:text-blue-400 transition duration-300">
+                        Contact
+                    </a>
+                </li>
+
+            </ul>
+        </div>
+
+        {{-- BUSINESS HOURS --}}
+        <div>
+            <h3 class="text-sm uppercase tracking-[0.2em] text-gray-400 mb-6">
+                Business Hours
+            </h3>
+
+            <div class="space-y-3 text-gray-300 text-lg">
+                <p>Monday: 24/7 Resident Access</p>
+                <p>Tuesday: 24/7 Resident Access</p>
+                <p>Wednesday: 24/7 Resident Access</p>
+                <p class="text-gray-500">...and more</p>
+            </div>
+        </div>
+
+    </div>
+
+    {{-- BOTTOM --}}
+    <div class="max-w-7xl mx-auto mt-20 pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center text-gray-500 text-sm">
+
+        <p>
+            © {{ date('Y') }} {{ $lead->name }}.
+            All rights reserved.
+        </p>
+
+        <p class="mt-4 md:mt-0">
+            Powered by AI ✦
+        </p>
+
+    </div>
+
 </footer>
 
 </body>
