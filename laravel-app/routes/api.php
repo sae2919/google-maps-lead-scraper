@@ -16,21 +16,21 @@ Route::get('/ping', function () {
 });
 
 // ── LEAD DATA (Python → Laravel) ──────────────────────────────────────────
+// No auth — Python script calls these directly without session
 Route::post('/save-lead',    [LeadController::class, 'saveLead']);
 Route::post('/update-total', [LeadController::class, 'updateTotal']);
 
-// ── FRONTEND POLLING ──────────────────────────────────────────────────────
-Route::get('/progress/{id}', [LeadController::class, 'progress']);
-Route::get('/leads/{id}',    [LeadController::class, 'getLeads']);
+// ── FRONTEND POLLING + CONTROLS (needs web session for auth()->id()) ───────
+Route::middleware('web')->group(function () {
 
-// ── SCRAPER STATUS (Python polls this every 10 items) ─────────────────────
-// Returns: { "stopped": bool, "paused": bool, "status": "RUNNING|PAUSED|STOPPED" }
-Route::get('/status/{id}',   [LeadController::class, 'checkStatus']);
+    Route::get('/progress/{id}', [LeadController::class, 'progress']);
+    Route::get('/leads/{id}',    [LeadController::class, 'getLeads']);
+    Route::get('/status/{id}',   [LeadController::class, 'checkStatus']);
 
-// ── SCRAPER CONTROLS (UI buttons → these routes) ──────────────────────────
-Route::post('/stop/{id}',    [LeadController::class, 'stop']);
-Route::post('/pause/{id}',   [LeadController::class, 'pause']);
-Route::post('/resume/{id}',  [LeadController::class, 'resume']);
+    Route::post('/stop/{id}',    [LeadController::class, 'stop']);
+    Route::post('/pause/{id}',   [LeadController::class, 'pause']);
+    Route::post('/resume/{id}',  [LeadController::class, 'resume']);
 
-// ── AI WEBSITE GENERATION ─────────────────────────────────────────────────
-Route::post('/generate-bulk-websites', [LeadController::class, 'generateBulkWebsites']);
+    Route::post('/generate-bulk-websites', [LeadController::class, 'generateBulkWebsites']);
+
+});

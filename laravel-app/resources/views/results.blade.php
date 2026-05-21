@@ -57,26 +57,7 @@
 <div class="flex min-h-screen">
 
     {{-- SIDEBAR --}}
-    <div class="w-64 bg-white border-r border-slate-200 p-4 flex flex-col fixed h-full shadow-sm">
-        <div class="flex items-center gap-3 px-2 mb-8">
-            <div class="w-10 h-10 bg-[#2563eb] rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-100">LG</div>
-            <span class="font-bold text-slate-700 tracking-tight text-lg">Lead Generator</span>
-        </div>
-        <nav class="space-y-1">
-            <a href="/dashboard" class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-all font-medium">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
-                </svg>
-                Home
-            </a>
-            <a href="{{ url()->previous() }}" class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-all font-medium">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
-                </svg>
-                Back
-            </a>
-        </nav>
-    </div>
+    @include('partials.sidebar')
 
     <div class="flex-1 ml-64 flex flex-col">
 
@@ -88,9 +69,11 @@
                     {{ strtoupper(substr(auth()->user()->name ?? 'AJ', 0, 2)) }}
                 </button>
                 <div id="profileMenu" class="hidden absolute right-4 top-16 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 z-50 py-2">
-                    <a href="/profile" class="block px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 font-medium">👤 Edit Profile</a>
+                    {{-- FIXED: /profile → named route --}}
+                    <a href="{{ route('profile.edit') }}" class="block px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 font-medium">👤 Edit Profile</a>
                     <hr class="my-1 border-slate-100">
-                    <form method="POST" action="/logout">
+                    {{-- FIXED: /logout → named route --}}
+                    <form method="POST" action="{{ route('logout') }}">
                         @csrf
                         <button type="submit" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 font-bold">🚪 Logout</button>
                     </form>
@@ -142,7 +125,8 @@
             {{-- FILTERS --}}
             <div class="flex flex-wrap items-center justify-between gap-4 mb-8">
                 <div class="flex gap-3">
-                    <a href="/export/{{ $id }}"
+                    {{-- FIXED: $id → $search->id --}}
+                    <a href="{{ route('export.leads', $search->id) }}"
                         class="inline-flex items-center gap-2 bg-[#2563eb] text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all active:scale-95">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
@@ -220,7 +204,8 @@
 </div>
 
 <script>
-const searchId       = "{{ $id }}";
+{{-- FIXED: $id → $search->id --}}
+const searchId       = "{{ $search->id }}";
 const csrfToken      = document.querySelector('meta[name="csrf-token"]').content;
 let currentPage      = 1;
 let currentLeadsData = [];
@@ -310,13 +295,11 @@ function loadProgress() {
     return fetch(`/api/progress/${searchId}`)
         .then(res => res.json())
         .then(data => {
-            // 🔥 FIX: use correct fields
-            const found    = data.found    || 0;   // actual lead count
-            const total    = data.total    || 0;   // total places from Python
-            const pct      = data.progress || 0;   // percentage 0-100
+            const found    = data.found    || 0;
+            const total    = data.total    || 0;
+            const pct      = data.progress || 0;
             let   status   = data.status   || 'RUNNING';
 
-            // 🔥 FIX: completion detection uses found vs total (not pct vs total)
             if (status === 'RUNNING' && found > 0 && total > 0 && found >= total) {
                 status = 'COMPLETED';
                 fetch(`/api/stop/${searchId}`, {
@@ -329,23 +312,15 @@ function loadProgress() {
                 status = 'COMPLETED';
             }
 
-            // 🔥 FIX: always show total even if 0 during scroll phase (show live count)
-            document.getElementById("totalPlaces").innerText = total > 0 ? total : '—';
-
-            // 🔥 FIX: leadCount shows actual found count, not percentage
-            document.getElementById("leadCount").innerText  = found;
-
-            // 🔥 FIX: progressText shows percentage with % symbol
+            document.getElementById("totalPlaces").innerText  = total > 0 ? total : '—';
+            document.getElementById("leadCount").innerText    = found;
             document.getElementById("progressText").innerText = pct + '%';
-
-            document.getElementById("statusText").innerText = status;
+            document.getElementById("statusText").innerText   = status;
 
             updateControlButtons(status);
 
-            // 🔥 If new leads arrived, reload table automatically on page 1
             if (found !== lastFoundCount) {
                 lastFoundCount = found;
-                // Only auto-reload table if user is on page 1 to avoid disrupting browsing
                 if (currentPage === 1) {
                     loadLeads(1);
                 }
@@ -364,8 +339,9 @@ function loadProgress() {
                         ? '✅ Completed! Redirecting...'
                         : '⛔ Stopped. Redirecting...';
                     document.getElementById("statusText").innerText = msg;
+                    {{-- FIXED: /results/ → /dashboard/results/ --}}
                     setTimeout(() => {
-                        window.location.href = `/results/${searchId}`;
+                        window.location.href = `{{ url('dashboard/results') }}/${searchId}`;
                     }, 2500);
                 }
             }
@@ -418,7 +394,6 @@ function renderTable() {
         return;
     }
 
-    // 🔥 Track existing row IDs to animate only new ones
     const existingIds = new Set(
         [...tbody.querySelectorAll('tr[data-id]')].map(r => r.dataset.id)
     );
@@ -427,7 +402,10 @@ function renderTable() {
 
     filtered.forEach(lead => {
         const noWebsite   = (!lead.website || lead.website === '-' || lead.website.trim() === '');
-        const isGenerated = lead.website && lead.website.includes('/sites/');
+        const isGenerated = lead.website && (
+    lead.website.includes('/generated-site/') ||
+    lead.website.includes('/sites/')
+);
         const isChecked   = selectedLeadIds.has(lead.id.toString()) ? 'checked' : '';
         const isNew       = !existingIds.has(lead.id.toString());
 
@@ -526,7 +504,7 @@ function generateBulkWebsites() {
     btn.disabled = true;
     btn.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle class="opacity-25" cx="12" cy="12" r="10" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> Building...`;
 
-    fetch('/generate-bulk-websites', {
+    fetch('{{ url("/dashboard/generate-bulk-websites") }}', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrfToken },
         body:    JSON.stringify({ ids }),
@@ -571,8 +549,6 @@ function changePage(p) {
 // ── POLLING ───────────────────────────────────────────────────────────────────
 function startPolling() {
     if (pollingInterval) clearInterval(pollingInterval);
-
-    // 🔥 Progress polls every 2s — drives stat card updates + triggers table reload when found count changes
     pollingInterval = setInterval(() => {
         loadProgress();
     }, 2000);

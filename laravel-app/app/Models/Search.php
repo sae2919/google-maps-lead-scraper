@@ -15,10 +15,12 @@ class Search extends Model
     ];
 
     protected $casts = [
-        'is_stopped'   => 'boolean',
-        'is_paused'    => 'boolean',
-        'total_places' => 'integer',
-    ];
+    'is_stopped'   => 'boolean',
+    'is_paused'    => 'boolean',
+    'total_places' => 'integer',
+    'started_at'   => 'datetime',
+    'completed_at' => 'datetime',
+];
 
     // ── RELATIONSHIPS ────────────────────────────────────────────────────────
 
@@ -48,4 +50,35 @@ class Search extends Model
     {
         return $query->where('is_stopped', true);
     }
+    public function getCompletionPercentageAttribute(): float
+{
+    if ($this->total_places == 0) {
+        return 0;
+    }
+
+    return round(($this->processed_count / $this->total_places) * 100, 2);
+}
+
+public function getStatusLabelAttribute(): string
+{
+    if ($this->is_stopped) {
+        return 'Stopped';
+    }
+
+    if ($this->is_paused) {
+        return 'Paused';
+    }
+
+    return 'Running';
+}
+
+public function scopeActive($query)
+{
+    return $query->where('is_stopped', false);
+}
+
+public function scopeCompleted($query)
+{
+    return $query->where('status', 'completed');
+}
 }

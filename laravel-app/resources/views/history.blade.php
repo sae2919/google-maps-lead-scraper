@@ -33,35 +33,8 @@
 <div class="flex min-h-screen">
 
     {{-- SIDEBAR --}}
-    <div class="w-64 bg-white border-r border-slate-200 p-4 flex flex-col shadow-sm fixed h-full">
-        <div class="flex items-center gap-3 px-2 mb-8">
-            <div class="w-10 h-10 bg-[#2563eb] rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-lg shadow-blue-100">LG</div>
-            <span class="font-bold text-slate-700 tracking-tight text-lg">Lead Generator</span>
-        </div>
-
-        <nav class="space-y-1">
-            <a href="/" class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-all font-medium">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
-                </svg>
-                Home
-            </a>
-
-            <a href="/history" class="flex items-center gap-3 px-4 py-3 rounded-xl bg-[#eff6ff] text-[#2563eb] font-semibold transition-all">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                History
-            </a>
-
-            <a href="/generate" class="flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-all font-medium">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-                </svg>
-                AI Generator
-            </a>
-        </nav>
-    </div>
+    @include('partials.sidebar')
+        
 
     <div class="flex-1 ml-64 flex flex-col">
 
@@ -126,9 +99,8 @@
                 @forelse($searches as $search)
                 @php
                     $leadCount   = $search->leads()->count() ?? 0;
-                    $isCompleted = $search->is_stopped
-                        && $search->total_places > 0
-                        && $leadCount >= $search->total_places;
+                    $isCompleted = $search->total_places > 0
+    && $leadCount >= $search->total_places;
 
                     if ($isCompleted) {
                         $statusKey   = 'done';
@@ -207,13 +179,13 @@
                         @endif
 
                         {{-- View Results --}}
-                        <a href="/results/{{ $search->id }}"
+                        <a href="{{ route('results.show', $search->id) }}"
                             class="text-sm font-bold text-slate-600 bg-white border border-slate-200 px-5 py-2.5 rounded-xl hover:bg-[#2563eb] hover:text-white hover:border-[#2563eb] transition-all">
                             View Results
                         </a>
 
                         {{-- Export --}}
-                        <a href="/export/{{ $search->id }}"
+                        <a href="{{ route('export.leads', $search->id) }}"
                             class="p-2.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all"
                             title="Export to Excel">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -245,7 +217,7 @@
                     </div>
                     <h3 class="text-slate-700 font-bold text-lg mb-2">No history yet</h3>
                     <p class="text-slate-400 text-sm mb-6">You haven't performed any lead searches yet.</p>
-                    <a href="/" class="bg-[#2563eb] text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all">
+                    <a href="/dashboard" class="bg-[#2563eb] text-white px-6 py-2.5 rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all">
                         Start First Search
                     </a>
                 </div>
@@ -299,7 +271,7 @@ async function resumeSearch(id, query, btn) {
 
         if (data.status === 'resumed') {
             window.registerActiveSearch(id, query);
-            window.location.href = '/results/' + id;
+            window.location.href = '/dashboard/results/' + id;
         } else {
             alert('Failed to resume.');
             btn.disabled  = false;

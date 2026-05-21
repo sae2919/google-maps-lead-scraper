@@ -2,184 +2,162 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Lead;
+use App\Jobs\GenerateWebsiteJob;
 use App\Models\GeneratedSite;
-use App\Services\AIWebsiteGenerator;
+use App\Models\Lead;
+use App\Services\AIWebsiteService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class WebsiteController extends Controller
 {
-    // =========================================================================
-    // USER-TRIGGERED GENERATION
-    // Route: POST /generate
-    // =========================================================================
-    public function generate(Request $request)
+    public function __construct(private AIWebsiteService $aiService)
     {
-        $request->validate([
-            'business_name' => 'required|string|max:100',
-            'category'      => 'required|string|max:100',
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // GENERATE  →  POST /dashboard/leads/{lead}/generate-website
+    // ──────────────────────────────────────────────────────────
+    public function generate(Request $request, Lead $lead)
+    {
+        $existing = GeneratedSite::where('business_name', $lead->name)->first();
+
+        if ($existing && $existing->generation_status === 'generating') {
+            return back()->with('info', 'Website is already being generated.');
+        }
+
+        if (!$existing) {
+            $existing = GeneratedSite::create([
+                'slug'              => Str::slug($lead->name) . '-' . Str::random(4),
+                'business_name'     => $lead->name,
+                'category'          => $lead->type     ?? $lead->category ?? '',
+                'city'              => $lead->city      ?? '',
+                'phone'             => $lead->phone     ?? '',
+                'address'           => $lead->address   ?? '',
+                'html_content'      => '',
+                'generation_status' => 'pending',
+            ]);
+        } else {
+            $existing->update(['generation_status' => 'pending']);
+        }
+
+        GenerateWebsiteJob::dispatch($lead->id);
+
+        return redirect()
+            ->route('website.show', $existing->slug)
+            ->with('success', 'AI website generation started!');
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // SHOW  →  GET /dashboard/generated-site/{slug}
+    // ──────────────────────────────────────────────────────────
+    public function show(string $slug)
+{
+    $site = \App\Models\GeneratedSite::where('slug', $slug)->firstOrFail();
+
+    if (in_array($site->generation_status, ['pending', 'generating'])) {
+        return view('website.loading', compact('site'));
+    }
+
+    if ($site->generation_status === 'failed') {
+        return view('website.failed', compact('site'));
+    }
+
+    // Handle double-encoded JSON
+    $raw = $site->ai_config;
+    if (is_array($raw)) {
+        $config = $raw;
+    } else {
+        $config = json_decode($raw, true);
+        if (is_string($config)) {
+            $config = json_decode($config, true);
+        }
+    }
+
+    if (empty($config) || !is_array($config)) {
+        return back()->with('error', 'Config empty. Try regenerating.');
+    }
+
+    return view('website.dynamic', compact('config', 'site'));
+}
+
+    // ──────────────────────────────────────────────────────────
+    // REGENERATE  →  POST /dashboard/generated-site/{site}/regenerate
+    // ──────────────────────────────────────────────────────────
+    public function regenerate(GeneratedSite $site)
+    {
+        // Find the lead by business_name to get the lead ID
+        $lead = Lead::where('name', $site->business_name)->first();
+
+        if (!$lead) {
+            return back()->with('error', 'Original lead not found. Cannot regenerate.');
+        }
+
+        $site->update(['generation_status' => 'pending']);
+
+        GenerateWebsiteJob::dispatch($lead->id);
+
+        return redirect()
+            ->route('website.show', $site->slug)
+            ->with('success', 'Regenerating with a fresh AI design...');
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // STATUS  →  GET /dashboard/generated-site/{slug}/status
+    // JSON polling endpoint for loading page
+    // ──────────────────────────────────────────────────────────
+    public function status(string $slug)
+    {
+        $site = GeneratedSite::where('slug', $slug)
+            ->select('generation_status', 'generated_at')
+            ->firstOrFail();
+
+        return response()->json([
+            'status'       => $site->generation_status,
+            'done'         => $site->generation_status === 'done',
+            'generated_at' => $site->generated_at?->toISOString(),
         ]);
+    }
+    public function generateBulk(Request $request)
+{
+    $ids = $request->input('ids', []);
 
-        $name     = trim($request->input('business_name'));
-        $category = trim($request->input('category'));
-        $city     = trim($request->input('city', 'Hyderabad'));
-        $phone    = trim($request->input('phone', ''));
-        $address  = trim($request->input('address', $city));
-        $catKey   = strtolower(str_replace([' ', '-'], '_', $category));
-
-        $pexels    = app(\App\Services\PexelsService::class);
-        $images    = $pexels->fetchImages($catKey, 4);
-
-        $generator = app(\App\Services\HTMLWebsiteGenerator::class);
-        $html      = $generator->generate([
-            'name'     => $name,
-            'category' => $catKey,
-            'city'     => $city,
-            'phone'    => $phone,
-            'address'  => $address,
-        ], $images);
-
-        $slug = $this->makeSlug($catKey, $name);
-
-        $site = GeneratedSite::create([
-            'slug'          => $slug,
-            'business_name' => $name,
-            'category'      => $catKey,
-            'city'          => $city,
-            'phone'         => $phone,
-            'address'       => $address,
-            'html_content'  => $html,
-            'pexels_images' => $images,
-            'metadata'      => [
-                'color_scheme' => $request->input('color_scheme', 'auto'),
-                'generated_at' => now()->toISOString(),
-            ],
-        ]);
-
-        return redirect()->route('site.show', $site->slug);
+    if (empty($ids)) {
+        return response()->json(['message' => 'No leads selected.'], 422);
     }
 
-    // =========================================================================
-    // SERVE SAVED GENERATED SITE
-    // Route: GET /site/{slug}
-    // =========================================================================
-    public function serveSite(string $slug)
-    {
-        $site = GeneratedSite::where('slug', $slug)->firstOrFail();
-        $site->incrementViews();
+    $dispatched = 0;
 
-        return response($site->html_content, 200)
-            ->header('Content-Type', 'text/html; charset=utf-8');
+    foreach ($ids as $id) {
+        $lead = Lead::find($id);
+        if (!$lead) continue;
+
+        // Skip if already generating
+        $existing = GeneratedSite::where('business_name', $lead->name)->first();
+        if ($existing && $existing->generation_status === 'generating') continue;
+
+        // Create record if not exists
+        if (!$existing) {
+            GeneratedSite::create([
+                'slug'              => \Str::slug($lead->name) . '-' . \Str::random(4),
+                'business_name'     => $lead->name,
+                'category'          => $lead->type     ?? $lead->category ?? '',
+                'city'              => $lead->city      ?? '',
+                'phone'             => $lead->phone     ?? '',
+                'address'           => $lead->address   ?? '',
+                'html_content'      => '',
+                'generation_status' => 'pending',
+            ]);
+        } else {
+            $existing->update(['generation_status' => 'pending']);
+        }
+
+        GenerateWebsiteJob::dispatch($lead->id);
+        $dispatched++;
     }
 
-    // =========================================================================
-    // LEAD-BASED SITE
-    // Route: GET /sites/{id}
-    // =========================================================================
-    public function show($id)
-    {
-        if (!is_numeric($id)) {
-            $id = preg_replace('/[^0-9]/', '', $id);
-        }
-
-        $lead     = Lead::findOrFail($id);
-        $metadata = json_decode($lead->ai_metadata, true) ?? [];
-
-        // Check if rich AI data already exists (including opening_hours)
-        $hasRichData = isset($metadata['about'])
-            && isset($metadata['stats'])
-            && isset($metadata['reviews'])
-            && isset($metadata['services'])
-            && isset($metadata['opening_hours']);
-
-        if (!$hasRichData) {
-            // Generate fresh content and cache it
-            $aiData   = app(AIWebsiteGenerator::class)->generate($lead);
-            $metadata = array_merge($metadata, $aiData);
-
-            $lead->ai_metadata = json_encode($metadata);
-            $lead->save();
-        }
-
-        // Build sections
-        $sections = $metadata['sections'] ?? [];
-        $sections = collect($sections)->unique('type')->values()->toArray();
-
-        $required = ['hero', 'about', 'services', 'gallery', 'reviews', 'info', 'contact'];
-        $existing = array_column($sections, 'type');
-
-        foreach ($required as $type) {
-            if (!in_array($type, $existing)) {
-                $sections[] = ['type' => $type, 'title' => ucfirst($type)];
-            }
-        }
-
-        $order = ['hero', 'about', 'services', 'gallery', 'reviews', 'info', 'contact'];
-        usort($sections, function ($a, $b) use ($order) {
-            $posA = array_search($a['type'], $order);
-            $posB = array_search($b['type'], $order);
-            return ($posA === false ? 999 : $posA) <=> ($posB === false ? 999 : $posB);
-        });
-
-        $data = [
-            'tagline'       => $metadata['tagline']       ?? '',
-            'colors'        => $metadata['colors']        ?? ['primary' => '#3b82f6', 'accent' => '#1e3a8a', 'bg' => '#ffffff'],
-            'navbar'        => $metadata['navbar']        ?? ['Home', 'About', 'Services', 'Gallery', 'Contact'],
-            'about'         => $metadata['about']         ?? [],
-            'stats'         => $metadata['stats']         ?? [],
-            'services'      => $metadata['services']      ?? [],
-            'reviews'       => $metadata['reviews']       ?? [],
-            'opening_hours' => $metadata['opening_hours'] ?? [],
-            'images'        => $metadata['auto_images']   ?? [],
-            'category'      => $this->detectCategory($lead->category ?? '', $lead->name ?? ''),
-            'sections'      => $sections,
-        ];
-
-        return view('website.dynamic', compact('data', 'lead'));
-    }
-
-    // =========================================================================
-    // HELPERS
-    // =========================================================================
-
-    private function detectCategory(string $rawCategory, string $name): string
-    {
-        $text = strtolower($rawCategory . ' ' . $name);
-
-        $map = [
-            'restaurant'  => ['restaurant','dining','food','cafe','coffee','biryani','diner','eatery','kitchen','dhaba','bar','pizza','burger','bakery','sweets','tiffin','mess','canteen','caterer','fast food','juice','family restaurant'],
-            'hotel'       => ['hotel','resort','inn','lodge','suites','stay','rooms','accommodation','guest house','service apartment','heritage hotel'],
-            'hospital'    => ['hospital','multispeciality','medical centre','nursing home','healthcare','medical college','super speciality','trauma','maternity'],
-            'clinic'      => ['clinic','doctor','physician','specialist','dental','ortho','gynec','pediatric','dermat','eye care','ent','neurolog','cardiolog','ayurved','homeopath'],
-            'gym'         => ['gym','fitness','crossfit','yoga','zumba','workout','sports','athletics','health club','martial arts','boxing','pilates','aerobics'],
-            'salon'       => ['salon','beauty','spa','parlour','parlor','haircut','grooming','nail','skin care','cosmet','makeup','bridal','unisex','hair studio'],
-            'pet_store'   => ['pet','veterinary','vet','animal','kennel','aquarium','dog','cat','bird','fish','pet shop'],
-            'pharmacy'    => ['pharmacy','chemist','medical store','drug','medicine','pharmaceutical','medicals','medical hall'],
-            'school'      => ['school','college','academy','institute','education','coaching','tutor','learning','preschool','kindergarten','cbse','icse'],
-            'retail'      => ['shop','store','supermarket','mart','bazaar','showroom','boutique','retail','wholesale','electronics','mobile','textile','garments','furniture','hardware','jewel'],
-            'law_firm'    => ['law','legal','advocate','attorney','solicitor','court','notary','lawyers'],
-            'real_estate' => ['real estate','property','builder','developer','construction','realty','housing','plots','flats','apartments','interior','architects'],
-        ];
-
-        foreach ($map as $key => $keywords) {
-            foreach ($keywords as $kw) {
-                if (str_contains($text, $kw)) return $key;
-            }
-        }
-
-        return 'business';
-    }
-
-    private function makeSlug(string $category, string $name): string
-    {
-        $base = Str::slug($category) . '-' . Str::slug(Str::limit($name, 30, ''));
-        $slug = $base . '-' . strtolower(Str::random(5));
-
-        while (GeneratedSite::where('slug', $slug)->exists()) {
-            $slug = $base . '-' . strtolower(Str::random(5));
-        }
-
-        return $slug;
-    }
+    return response()->json([
+        'message' => "✅ Generating AI websites for {$dispatched} businesses. Check back in 15-20 seconds."
+    ]);
+}
 }

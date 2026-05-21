@@ -7,24 +7,37 @@ use Illuminate\Database\Eloquent\Builder;
 
 class Lead extends Model
 {
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array
-     */
+    protected $casts = [
+    'rating' => 'float',
+    'ai_metadata' => 'array',
+];
     protected $fillable = [
-        'search_id', 
-        'name', 
-        'phone', 
-        'email', 
-        'website', 
-        'address', 
-        'main_area', 
-        'pincode', 
-        'maps_url', 
-        'rating',
-        'ai_metadata'
-    ];
+
+    'name',
+
+    'phone',
+
+    'email',
+
+    'website',
+
+    'address',
+
+    'rating',
+
+    'reviews',
+
+    'category',
+
+    'main_area',
+
+    'slug',
+
+    'ai_metadata',
+
+    'search_id'
+
+];
 
     /**
      * RELATIONSHIP: A lead belongs to a specific search.
@@ -66,4 +79,27 @@ class Lead extends Model
     {
         return $query->where('rating', '>=', $rating);
     }
+    public function hasWebsite(): bool
+{
+    return !empty($this->website) && $this->website !== '-';
+}
+
+public function getLeadScoreAttribute(): int
+{
+    $score = 0;
+
+    if ($this->website) $score += 30;
+    if ($this->phone) $score += 25;
+    if ($this->email) $score += 25;
+    if ($this->rating >= 4) $score += 20;
+
+    return $score;
+}
+
+public function scopeHighQuality($query)
+{
+    return $query->whereNotNull('website')
+                 ->whereNotNull('phone')
+                 ->where('rating', '>=', 4);
+}
 }

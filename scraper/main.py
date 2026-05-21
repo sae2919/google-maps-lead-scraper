@@ -18,7 +18,7 @@ OFFSET    = int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3].strip() != '' 
 # ── Safe print ─────────────────────────────────────────────────────────────────
 def safe_print(*args, **kwargs):
     try:
-        print(*args, **kwargs)
+        print(*args, **kwargs, flush=True)
     except OSError:
         pass
 
@@ -28,6 +28,8 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
 from webdriver_manager.chrome import ChromeDriverManager
 
 
@@ -67,25 +69,41 @@ def create_driver():
 
     options = Options()
 
-    # 🔥 HEADLESS MODE
+    # HEADLESS
     options.add_argument("--headless=new")
+
+    # PERFORMANCE
+    options.page_load_strategy = 'eager'
 
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
-    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--start-maximized")
+
+    # STABILITY
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-
-    # 🔥 EXTRA HEADLESS STABILITY
     options.add_argument("--disable-extensions")
     options.add_argument("--disable-infobars")
     options.add_argument("--disable-popup-blocking")
-    options.add_argument("--start-maximized")
+
+    # ANTI DETECTION
+    options.add_argument("--disable-blink-features=AutomationControlled")
+
+    # FASTER LOADING
+    prefs = {
+        "profile.managed_default_content_settings.images": 2
+    }
+
+    options.add_experimental_option(
+        "prefs",
+        prefs
+    )
 
     options.add_argument(
         "user-agent=Mozilla/5.0 "
         "(Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 "
+        "(KHTML, like Gecko) "
         "Chrome/120 Safari/537.36"
     )
 
@@ -96,11 +114,17 @@ def create_driver():
         options=options
     )
 
-    driver.execute_script(
-        "Object.defineProperty("
-        "navigator, 'webdriver', "
-        "{get: () => undefined})"
-    )
+    driver.set_page_load_timeout(30)
+
+    driver.execute_script("""
+        Object.defineProperty(
+            navigator,
+            'webdriver',
+            {
+                get: () => undefined
+            }
+        )
+    """)
 
     return driver
 
@@ -108,6 +132,37 @@ def create_driver():
 driver = create_driver()
 
 progress = 0
+
+
+def update_total(total):
+
+    try:
+
+        safe_print(
+            f"UPDATING TOTAL: {total}"
+        )
+
+        response = requests.post(
+            TOTAL_URL,
+            json={
+                "search_id": SEARCH_ID,
+                "total_places": total
+            },
+            headers={
+                "Content-Type": "application/json"
+            },
+            timeout=5
+        )
+
+        safe_print(
+            f"TOTAL API STATUS: {response.status_code}"
+        )
+
+    except Exception as e:
+
+        safe_print(
+            f"TOTAL API ERROR: {e}"
+        )
 
 
 def check_status():
@@ -172,62 +227,99 @@ search_query = query.replace(" ", "+")
 
 try:
 
-    safe_print("Opening Google Maps...")
+    safe_print("OPENING GOOGLE MAPS")
 
     driver.get(
         f"https://www.google.com/maps/search/{search_query}"
     )
 
-    time.sleep(8)
+    safe_print("MAPS PAGE OPENED")
 
-    safe_print("Zooming out...")
+    time.sleep(5)
 
-    for _ in range(5):
+    # ─────────────────────────────────────────────────────────────
+    # FIND RESULTS PANEL
+    # ─────────────────────────────────────────────────────────────
+
+    scrollable_div = None
+
+    safe_print("FINDING RESULTS PANEL")
+
+    for attempt in range(15):
 
         try:
 
-            driver.execute_script(
-                "document.querySelector("
-                "'button[aria-label=\"Zoom out\"]'"
-                ").click();"
+            scrollable_div = driver.find_element(
+                By.XPATH,
+                '//div[@role="feed"]'
+            )
+
+            safe_print(
+                "RESULTS PANEL FOUND"
+            )
+
+            break
+
+        except Exception as e:
+
+            safe_print(
+                f"WAITING RESULTS PANEL: {attempt+1}"
             )
 
             time.sleep(2)
 
-        except:
-            break
+    if not scrollable_div:
 
-    scrollable_div = driver.find_element(
-        By.XPATH,
-        '//div[@role="feed"]'
-    )
+        safe_print(
+            "RESULTS PANEL NOT FOUND"
+        )
+
+        driver.save_screenshot(
+            "maps_error.png"
+        )
+
+        driver.quit()
+
+        sys.exit(0)
+
+    # ─────────────────────────────────────────────────────────────
+    # SCROLLING
+    # ─────────────────────────────────────────────────────────────
+
+    links = set()
 
     prev_count = 0
     same_count = 0
 
-    # ─────────────────────────────────────────────────────────────
-    # 🔥 SCROLL + COLLECT LINKS LIVE
-    # ─────────────────────────────────────────────────────────────
+    safe_print("STARTING SCROLL")
 
-    safe_print("Scrolling results...")
+    for i in range(20):
 
-    links = set()
+        check_status()
 
-    for i in range(500):
-
-        driver.execute_script(
-            'arguments[0].scrollTop = arguments[0].scrollHeight',
-            scrollable_div
+        safe_print(
+            f"SCROLL LOOP: {i+1}"
         )
 
-        time.sleep(5)
+        try:
 
-        driver.execute_script(
-            "arguments[0].scrollBy(0, 5000);",
-            scrollable_div
-        )
+            driver.execute_script(
+                """
+                arguments[0].scrollTop =
+                arguments[0].scrollHeight
+                """,
+                scrollable_div
+            )
 
-        time.sleep(5)
+        except Exception as e:
+
+            safe_print(
+                f"SCROLL ERROR: {e}"
+            )
+
+            break
+
+        time.sleep(2)
 
         places = driver.find_elements(
             By.CSS_SELECTOR,
@@ -237,49 +329,43 @@ try:
         current_count = len(places)
 
         safe_print(
-            f"Scroll {i+1}: "
-            f"{current_count} visible places"
+            f"VISIBLE PLACES: {current_count}"
         )
 
-        # 🔥 SAVE LINKS DURING SCROLL
         for p in places:
 
-            href = p.get_attribute("href")
+            try:
 
-            if not href:
-                continue
+                href = p.get_attribute("href")
 
-            clean = href.split("&")[0]
+                if href:
 
-            links.add(clean)
+                    clean = href.split("&")[0]
+
+                    if clean not in links:
+
+                        links.add(clean)
+
+                        # INSTANT TOTAL UPDATE
+                        update_total(
+                            len(links)
+                        )
+
+            except:
+                pass
 
         safe_print(
-            f"🔥 TOTAL COLLECTED LINKS: {len(links)}"
+            f"TOTAL LINKS: {len(links)}"
         )
 
-        # 🔥 LIVE TOTAL UPDATE — send to Laravel on every scroll iteration
-        try:
-            requests.post(
-                TOTAL_URL,
-                json={
-                    "search_id": SEARCH_ID,
-                    "total_places": len(links)
-                },
-                headers={"Content-Type": "application/json"},
-                timeout=3
-            )
-        except Exception:
-            pass
-
-        # 🔥 END DETECTION
         if current_count == prev_count:
 
             same_count += 1
 
-            if same_count >= 5:
+            if same_count >= 4:
 
                 safe_print(
-                    "✅ End of results reached"
+                    "END OF RESULTS"
                 )
 
                 break
@@ -291,7 +377,7 @@ try:
         prev_count = current_count
 
     # ─────────────────────────────────────────────────────────────
-    # 🔥 FINAL LINKS
+    # FINAL TOTAL
     # ─────────────────────────────────────────────────────────────
 
     links = list(links)
@@ -299,81 +385,47 @@ try:
     total_places = len(links)
 
     safe_print(
-        f"FINAL UNIQUE LINKS: {total_places}"
+        f"FINAL TOTAL: {total_places}"
     )
 
-    safe_print(
-        f"🔥 TOTAL PLACES FOUND FIRST: "
-        f"{total_places} | OFFSET: {OFFSET}"
-    )
-
-    # ─────────────────────────────────────────────────────────────
-    # 🔥 SEND TOTAL FIRST TO LARAVEL
-    # ─────────────────────────────────────────────────────────────
-
-    try:
-
-        requests.post(
-            TOTAL_URL,
-            json={
-                "search_id": SEARCH_ID,
-                "total_places": total_places
-            },
-            headers={
-                "Content-Type": "application/json"
-            },
-            timeout=10
-        )
-
-        safe_print(
-            "✅ TOTAL COUNT SENT TO UI"
-        )
-
-    except Exception as e:
-
-        safe_print(
-            f"TOTAL UPDATE ERROR: {e}"
-        )
-
-    # 🔥 WAIT SO UI SHOWS TOTAL FIRST
-    time.sleep(3)
+    update_total(total_places)
 
     if total_places == 0:
 
-        safe_print("No places found.")
+        safe_print(
+            "NO PLACES FOUND"
+        )
 
         driver.quit()
 
         sys.exit(0)
 
-    # ─────────────────────────────────────────────────────────────
-    # 🔥 RESUME SUPPORT
-    # ─────────────────────────────────────────────────────────────
-
+    # RESUME SUPPORT
     if OFFSET > 0:
 
         safe_print(
-            f"⏩ Skipping first "
-            f"{OFFSET} links"
+            f"SKIPPING FIRST {OFFSET}"
         )
 
         links = links[OFFSET:]
 
     # ─────────────────────────────────────────────────────────────
-    # 🔥 PROCESS EACH BUSINESS
+    # PROCESS BUSINESSES
     # ─────────────────────────────────────────────────────────────
 
     for i, link in enumerate(links):
 
-        if i % 10 == 0:
-
-            check_status()
+        check_status()
 
         try:
 
+            safe_print(
+                f"OPENING BUSINESS {i+1}"
+            )
+
             driver.get(link)
 
-            time.sleep(3)
+            time.sleep(2)
 
             try:
 
@@ -382,7 +434,16 @@ try:
                     "h1"
                 ).text
 
-            except:
+                safe_print(
+                    f"BUSINESS: {name}"
+                )
+
+            except Exception as e:
+
+                safe_print(
+                    f"NAME ERROR: {e}"
+                )
+
                 continue
 
             address = ""
@@ -433,7 +494,7 @@ try:
                 ).text
 
             except:
-                pass
+                rating = "0"
 
             main_area = ""
             pincode   = ""
@@ -459,11 +520,22 @@ try:
 
                     main_area = parts[-2].strip()
 
-            except Exception as e:
+            except:
+                pass
 
-                safe_print(
-                    f"AREA ERROR: {e}"
+            try:
+
+                clean_rating = re.findall(
+                    r'\d+\.?\d*',
+                    str(rating)
                 )
+
+                clean_rating = float(
+                    clean_rating[0]
+                ) if clean_rating else 0
+
+            except:
+                clean_rating = 0
 
             types = detect_types(
                 name,
@@ -475,7 +547,7 @@ try:
 
                 "search_id": SEARCH_ID,
 
-                "name": name,
+                "business_name": name,
 
                 "phone": re.sub(
                     r'[^0-9+]',
@@ -495,45 +567,58 @@ try:
 
                 "maps_url": link,
 
-                "rating": float(rating)
-                if rating else 0,
+                "rating": clean_rating,
 
                 "types": types,
             }
 
+            safe_print(
+                "SAVING LEAD"
+            )
+
+            safe_print(data)
+
             try:
 
-                requests.post(
+                response = requests.post(
                     API_URL,
                     json=data,
                     headers={
-                        "Content-Type":
-                        "application/json"
+                        "Content-Type": "application/json"
                     },
                     timeout=10
                 )
 
-            except:
+                safe_print(
+                    f"SAVE STATUS: {response.status_code}"
+                )
+
+                safe_print(
+                    f"SAVE RESPONSE: {response.text}"
+                )
+
+            except Exception as e:
+
+                safe_print(
+                    f"SAVE API ERROR: {e}"
+                )
+
                 continue
 
             progress += 1
 
-            actual_total = OFFSET + len(links)
-
             safe_print(
-                f"PROGRESS: "
-                f"{OFFSET + progress}/"
-                f"{actual_total}"
+                f"PROGRESS: {progress}/{total_places}"
             )
 
         except Exception as e:
 
             safe_print(
-                f"SCRAPE ERROR: {e}"
+                f"BUSINESS ERROR: {e}"
             )
 
     # ─────────────────────────────────────────────────────────────
-    # 🔥 AUTO STOP
+    # STOP
     # ─────────────────────────────────────────────────────────────
 
     try:
@@ -544,7 +629,7 @@ try:
         )
 
         safe_print(
-            "✅ SCRAPING COMPLETE"
+            "SCRAPING COMPLETED"
         )
 
     except Exception as e:
@@ -555,11 +640,15 @@ try:
 
 except Exception as e:
 
-    safe_print(f"FATAL ERROR: {e}")
+    safe_print(
+        f"FATAL ERROR: {e}"
+    )
 
 finally:
 
-    safe_print("Scraping session ended.")
+    safe_print(
+        "SCRAPING SESSION ENDED"
+    )
 
     driver.quit()
 

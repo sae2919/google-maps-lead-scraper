@@ -1,126 +1,237 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\LeadController;
 use App\Http\Controllers\AdminController;
-use App\Http\Controllers\WebsiteController;
-use Laravel\Socialite\Facades\Socialite;
-use App\Models\User;
-use Illuminate\Support\Facades\Auth;
+use App\Http\Controllers\ProfileController;
+use App\Models\Lead;
+use App\Models\Search;
 
 /*
 |--------------------------------------------------------------------------
-| 🔓 PUBLIC & AUTH ROUTES
+| Delete All Searches
 |--------------------------------------------------------------------------
 */
 
-Route::get('/auth/google', function () {
-    return Socialite::driver('google')->redirect();
-});
+Route::match(['GET', 'POST'], '/delete-all-searches', function () {
 
-Route::get('/auth/google/callback', function () {
-    $googleUser = Socialite::driver('google')->user();
-    $user = User::updateOrCreate(
-        ['email' => $googleUser->getEmail()],
-        ['name'  => $googleUser->getName(), 'password' => bcrypt(uniqid())]
+    Lead::query()->delete();
+
+    Search::query()->delete();
+
+    return redirect()->back()->with(
+        'success',
+        'All searches deleted successfully.'
     );
-    Auth::login($user);
-    return redirect('/dashboard');
-});
+
+})->name('delete.all.searches');
+
+/*
+|--------------------------------------------------------------------------
+| Public Routes
+|--------------------------------------------------------------------------
+*/
 
 Route::get('/', function () {
-    if (!auth()->check()) return redirect('/login');
-    return auth()->user()->role === 'admin'
-        ? redirect('/admin/dashboard')
-        : redirect('/dashboard');
+
+    return view('welcome');
+
+})->name('home');
+
+/*
+|--------------------------------------------------------------------------
+| Authenticated User Routes
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware(['auth'])
+    ->prefix('dashboard')
+    ->group(function () {
+
+        /*
+        |--------------------------------------------------------------------------
+        | Dashboard
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/', function () {
+
+            if (auth()->user()->role === 'admin') {
+
+                return redirect('/admin/dashboard');
+            }
+
+            return app(
+                \App\Http\Controllers\LeadController::class
+            )->dashboard();
+
+        })->name('dashboard');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Search Routes
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/search', [LeadController::class, 'searchPage'])
+            ->name('search.page');
+
+        Route::post('/search', [LeadController::class, 'search'])
+            ->middleware('throttle:20,1')
+            ->name('search.start');
+
+        Route::get('/results/{id}', [LeadController::class, 'results'])
+            ->name('results.show');
+
+        Route::get('/history', [LeadController::class, 'history'])
+            ->name('history.index');
+
+        Route::get('/export/{id}', [LeadController::class, 'export'])
+            ->name('export.leads');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Search Controls
+        |--------------------------------------------------------------------------
+        */
+
+        Route::post('/pause-search/{id}', [LeadController::class, 'pauseSearch'])
+            ->name('search.pause');
+
+        Route::post('/resume-search/{id}', [LeadController::class, 'resumeSearch'])
+            ->name('search.resume');
+
+        Route::post('/stop-search/{id}', [LeadController::class, 'stopSearch'])
+            ->name('search.stop');
+
+        /*
+        |--------------------------------------------------------------------------
+        | AI Website Generation
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/generate', [LeadController::class, 'generatePage'])
+            ->name('generate.page');
+
+        Route::post('/generate-site/{lead}', [LeadController::class, 'generateSite'])
+            ->name('site.generate');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Bulk Website Generator
+        |--------------------------------------------------------------------------
+        */
+
+        Route::post(
+            '/generate-bulk-websites',
+            [LeadController::class, 'generateBulkWebsites']
+        )->name('generate-bulk-websites');
+
+        Route::get('/generated-sites', [LeadController::class, 'generatedSites'])
+            ->name('site.index');
+
+        Route::get(
+    '/generated-site/{slug}',
+    [LeadController::class, 'viewGeneratedSite']
+)->name('site.view');
+
+    });
+    Route::post('/generate', [App\Http\Controllers\LeadController::class, 'generateFromForm'])
+    ->name('generate.submit');
+ Route::delete('/delete-search/{id}', [App\Http\Controllers\LeadController::class, 'deleteSearch'])->name('search.delete');
+Route::post('/delete-search/{id}', [App\Http\Controllers\LeadController::class, 'deleteSearch'])
+    ->name('search.delete');
+    Route::get('/api/dashboard-stats', [LeadController::class, 'dashboardStats'])
+    ->name('dashboard.stats');
+/*
+|--------------------------------------------------------------------------
+| Admin Routes
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware(['auth', 'admin'])
+    ->prefix('admin')
+    ->name('admin.')
+    ->group(function () {
+
+        /*
+        |--------------------------------------------------------------------------
+        | Admin Dashboard
+        |--------------------------------------------------------------------------
+        */
+
+        Route::get('/dashboard', [AdminController::class, 'dashboard'])
+            ->name('dashboard');
+
+        /*
+        |--------------------------------------------------------------------------
+        | User Management
+        |--------------------------------------------------------------------------
+        */
+
+        Route::post('/update-user/{id}', [AdminController::class, 'updateUser'])
+            ->name('user.update');
+
+        Route::post('/toggle-role/{id}', [AdminController::class, 'toggleRole'])
+            ->name('user.toggleRole');
+
+        Route::delete('/delete-user/{id}', [AdminController::class, 'deleteUser'])
+            ->name('user.delete');
+
+    });
+
+/*
+|--------------------------------------------------------------------------
+| SEO Routes
+|--------------------------------------------------------------------------
+*/
+
+Route::get(
+    '/sitemap.xml',
+    [LeadController::class, 'sitemap']
+);
+
+Route::get(
+    '/robots.txt',
+    function () {
+
+        return response(
+            "User-agent: *\n"
+            . "Allow: /\n\n"
+            . "Sitemap: "
+            . url('/sitemap.xml'),
+            200,
+            ['Content-Type' => 'text/plain']
+        );
+
+    }
+);
+
+Route::get(
+    '/{city}/{service}',
+    [LeadController::class, 'seoPage']
+)->where([
+    'city' => '[A-Za-z0-9\-]+',
+    'service' => '[A-Za-z0-9\-]+',
+]);
+
+/*
+|--------------------------------------------------------------------------
+| Profile Routes
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware('auth')->group(function () {
+
+    Route::get('/profile', [ProfileController::class, 'edit'])
+        ->name('profile.edit');
+
+    Route::patch('/profile', [ProfileController::class, 'update'])
+        ->name('profile.update');
+
+    Route::delete('/profile', [ProfileController::class, 'destroy'])
+        ->name('profile.destroy');
+
 });
-
-/*
-|--------------------------------------------------------------------------
-| 🔐 PROTECTED USER ROUTES
-|--------------------------------------------------------------------------
-*/
-
-Route::middleware(['auth'])->group(function () {
-
-    // ── Dashboard ────────────────────────────────────────────────────────
-    Route::get('/dashboard', function () {
-        if (auth()->user()->role === 'admin') {
-            return redirect('/admin/dashboard');
-        }
-        return app(\App\Http\Controllers\LeadController::class)->dashboard();
-    })->name('dashboard');
-    Route::get('/search-page', fn() => view('welcome'))->name('search.page');
-
-    // ── Scraper Operations ───────────────────────────────────────────────
-    Route::post('/search',           [LeadController::class, 'search']);
-    Route::get('/results/{id}',      [LeadController::class, 'results']);
-    Route::get('/history',           [LeadController::class, 'history']);
-
-    // These are duplicated in api.php too — kept here for web middleware
-    Route::get('/api/progress/{id}', [LeadController::class, 'progress']);
-    Route::get('/api/leads/{id}',    [LeadController::class, 'getLeads']);
-
-    // ── Scraper Controls ─────────────────────────────────────────────────
-    Route::post('/stop-search/{id}',   [LeadController::class, 'stop']);
-    Route::post('/pause-search/{id}',  [LeadController::class, 'pause']);
-    Route::post('/resume-search/{id}', [LeadController::class, 'resume']);
-
-    // ── Data Management ──────────────────────────────────────────────────
-    Route::get('/export/{id}',         [LeadController::class, 'export']);
-    Route::post('/export-filtered',    [LeadController::class, 'exportFiltered']);
-    Route::post('/delete/{id}',        [LeadController::class, 'delete']);
-    Route::post('/delete-all',         [LeadController::class, 'deleteAll']);
-
-    // ── Profile ──────────────────────────────────────────────────────────
-    Route::get('/profile',    [ProfileController::class, 'edit'])->name('profile.edit');
-    Route::patch('/profile',  [ProfileController::class, 'update'])->name('profile.update');
-    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-
-    // ── AI Website Generator ─────────────────────────────────────────────
-    Route::get('/generate',  fn() => view('website.form'))->name('website.form');
-    Route::post('/generate', [WebsiteController::class, 'generate'])->name('website.generate');
-
-    // Bulk Generation (called from results page JS)
-    Route::post('/generate-bulk-websites', [LeadController::class, 'generateBulkWebsites']);
-});
-
-/*
-|--------------------------------------------------------------------------
-| 🌐 PUBLIC ROUTES — No auth required
-|--------------------------------------------------------------------------
-*/
-
-// Lead-based AI sites (scraped from Google Maps)
-Route::get('/sites/{id}', [WebsiteController::class, 'show'])->name('website.show');
-
-// User-generated sites (saved to generated_sites table)
-Route::get('/site/{slug}', [WebsiteController::class, 'serveSite'])->name('site.show');
-
-// Contact form submissions from generated sites
-Route::post('/contact-submit', [LeadController::class, 'contactSubmit']);
-
-/*
-|--------------------------------------------------------------------------
-| 🛡️ ADMIN ONLY ROUTES
-|--------------------------------------------------------------------------
-*/
-
-Route::middleware(['auth', 'admin'])->group(function () {
-    Route::get('/admin/dashboard',          [AdminController::class, 'dashboard'])->name('admin.dashboard');
-    Route::post('/admin/update-user/{id}',  [AdminController::class, 'updateUser']);
-    Route::post('/admin/toggle-role/{id}',  [AdminController::class, 'toggleRole']);
-    Route::post('/admin/delete-user/{id}',  [AdminController::class, 'deleteUser']);
-});
-
-/*
-|--------------------------------------------------------------------------
-| 🔧 SCAFFOLDING & SEO
-|--------------------------------------------------------------------------
-*/
 
 require __DIR__.'/auth.php';
-
-Route::get('/seo/{city}/{service}', [LeadController::class, 'seoPage']);
-Route::post('/delete-search/{id}', [LeadController::class, 'deleteSearch']);
