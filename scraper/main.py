@@ -5,10 +5,10 @@ import requests
 
 sys.stdout.reconfigure(encoding='utf-8')
 
-API_URL    = "http://127.0.0.1:8000/api/save-lead"
-STATUS_URL = "http://127.0.0.1:8000/api/status"
-TOTAL_URL  = "http://127.0.0.1:8000/api/update-total"
-STOP_URL   = "http://127.0.0.1:8000/api/stop"
+API_URL    = "http://127.0.0.1:8002/api/save-lead"
+STATUS_URL = "http://127.0.0.1:8002/api/status"
+TOTAL_URL  = "http://127.0.0.1:8002/api/update-total"
+STOP_URL   = "http://127.0.0.1:8002/api/stop"
 
 # ── Arguments ──────────────────────────────────────────────────────────────────
 query     = sys.argv[1] if len(sys.argv) > 1 else "restaurants in hyderabad"

@@ -89,9 +89,13 @@ class LeadController extends Controller
 
         $this->searchService->stop($search);
 
-        return response()->json([
-            'status' => 'stopped'
-        ]);
+        if (request()->wantsJson() || request()->ajax()) {
+            return response()->json([
+                'status' => 'stopped'
+            ]);
+        }
+
+        return redirect()->back()->with('success', 'Scraping stopped!');
     }
 
     // =========================================================================
@@ -107,9 +111,13 @@ class LeadController extends Controller
 
         $this->searchService->pause($search);
 
-        return response()->json([
-            'status' => 'paused'
-        ]);
+        if (request()->wantsJson() || request()->ajax()) {
+            return response()->json([
+                'status' => 'paused'
+            ]);
+        }
+
+        return redirect()->back()->with('success', 'Scraping paused!');
     }
 
     // =========================================================================
@@ -125,9 +133,13 @@ class LeadController extends Controller
 
         $this->searchService->resume($search);
 
-        return response()->json([
-            'status' => 'resumed'
-        ]);
+        if (request()->wantsJson() || request()->ajax()) {
+            return response()->json([
+                'status' => 'resumed'
+            ]);
+        }
+
+        return redirect()->route('results.show', $id)->with('success', 'Scraping resumed!');
     }
 
     // =========================================================================
@@ -810,6 +822,69 @@ $services = config('seo.services');
         'application/xml'
     );
 }
+
+public function generatedSites()
+{
+    $userId = auth()->id();
+
+    $businessNames = Lead::whereHas('search', fn($q) => $q->where('user_id', $userId))
+        ->pluck('name')
+        ->toArray();
+
+    $sites = \App\Models\GeneratedSite::whereIn('business_name', $businessNames)
+        ->latest()
+        ->paginate(12);
+
+    return view('website.index', compact('sites'));
+}
+
+public function generateSite(Request $request, Lead $lead)
+{
+    $existing = \App\Models\GeneratedSite::where('business_name', $lead->name)->first();
+
+    if ($existing && $existing->generation_status === 'generating') {
+        return back()->with('info', 'Website is already being generated.');
+    }
+
+    if (!$existing) {
+        $existing = \App\Models\GeneratedSite::create([
+            'slug'              => \Str::slug($lead->name) . '-' . \Str::random(4),
+            'business_name'     => $lead->name,
+            'category'          => $lead->type     ?? $lead->category ?? '',
+            'city'              => $lead->city      ?? '',
+            'phone'             => $lead->phone     ?? '',
+            'address'           => $lead->address   ?? '',
+            'html_content'      => '',
+            'generation_status' => 'pending',
+        ]);
+    } else {
+        $existing->update(['generation_status' => 'pending']);
+    }
+
+    \App\Jobs\GenerateWebsiteJob::dispatch($lead->id);
+
+    return redirect()
+        ->route('site.view', $existing->slug)
+        ->with('success', 'AI website generation started!');
+}
+
+public function regenerateSite(\App\Models\GeneratedSite $site)
+{
+    $lead = Lead::where('name', $site->business_name)->first();
+
+    if (!$lead) {
+        return back()->with('error', 'Original lead not found. Cannot regenerate.');
+    }
+
+    $site->update(['generation_status' => 'pending']);
+
+    \App\Jobs\GenerateWebsiteJob::dispatch($lead->id);
+
+    return redirect()
+        ->route('site.view', $site->slug)
+        ->with('success', 'Regenerating with a fresh AI design...');
+}
+
 public function searchPage()
 {
     return view('search'); // your search blade

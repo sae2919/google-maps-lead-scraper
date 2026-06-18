@@ -95,13 +95,13 @@ Route::middleware(['auth'])
         |--------------------------------------------------------------------------
         */
 
-        Route::post('/pause-search/{id}', [LeadController::class, 'pauseSearch'])
+        Route::post('/pause-search/{id}', [LeadController::class, 'pause'])
             ->name('search.pause');
 
-        Route::post('/resume-search/{id}', [LeadController::class, 'resumeSearch'])
+        Route::post('/resume-search/{id}', [LeadController::class, 'resume'])
             ->name('search.resume');
 
-        Route::post('/stop-search/{id}', [LeadController::class, 'stopSearch'])
+        Route::post('/stop-search/{id}', [LeadController::class, 'stop'])
             ->name('search.stop');
 
         /*
@@ -112,6 +112,9 @@ Route::middleware(['auth'])
 
         Route::get('/generate', [LeadController::class, 'generatePage'])
             ->name('generate.page');
+
+        Route::post('/generate', [LeadController::class, 'generateFromForm'])
+            ->name('generate.submit');
 
         Route::post('/generate-site/{lead}', [LeadController::class, 'generateSite'])
             ->name('site.generate');
@@ -131,18 +134,22 @@ Route::middleware(['auth'])
             ->name('site.index');
 
         Route::get(
-    '/generated-site/{slug}',
-    [LeadController::class, 'viewGeneratedSite']
-)->name('site.view');
+            '/generated-site/{slug}',
+            [LeadController::class, 'viewGeneratedSite']
+        )->name('site.view');
 
+        Route::post('/generated-site/{site}/regenerate', [LeadController::class, 'regenerateSite'])
+            ->name('site.regenerate');
+
+        Route::delete('/delete-search/{id}', [LeadController::class, 'deleteSearch'])
+            ->name('search.delete');
+
+        Route::post('/delete-search/{id}', [LeadController::class, 'deleteSearch'])
+            ->name('search.delete');
+
+        Route::get('/api/dashboard-stats', [LeadController::class, 'dashboardStats'])
+            ->name('dashboard.stats');
     });
-    Route::post('/generate', [App\Http\Controllers\LeadController::class, 'generateFromForm'])
-    ->name('generate.submit');
- Route::delete('/delete-search/{id}', [App\Http\Controllers\LeadController::class, 'deleteSearch'])->name('search.delete');
-Route::post('/delete-search/{id}', [App\Http\Controllers\LeadController::class, 'deleteSearch'])
-    ->name('search.delete');
-    Route::get('/api/dashboard-stats', [LeadController::class, 'dashboardStats'])
-    ->name('dashboard.stats');
 /*
 |--------------------------------------------------------------------------
 | Admin Routes

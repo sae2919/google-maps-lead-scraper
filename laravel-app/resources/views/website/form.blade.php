@@ -592,7 +592,7 @@
             </div>
         @endif
 
-        <form method="POST" action="{{ route('generate.submit') }}" id="genForm"></form>
+        <form method="POST" action="{{ route('generate.submit') }}" id="genForm">
             @csrf
             <input type="hidden" name="category"     id="categoryInput" value="{{ old('category') }}">
             <input type="hidden" name="color_scheme" id="colorInput"    value="auto">

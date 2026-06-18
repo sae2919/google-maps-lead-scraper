@@ -382,7 +382,7 @@ window.addEventListener('click', function(e) {
 
 // ── Live stats polling ─────────────────────────────────────
 function updateDashboardStats() {
-    fetch('/api/dashboard-stats')
+    fetch('{{ route('dashboard.stats') }}')
         .then(r => r.json())
         .then(data => {
             const el = id => document.getElementById(id);

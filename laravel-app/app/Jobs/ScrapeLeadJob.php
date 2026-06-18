@@ -113,18 +113,12 @@ class ScrapeLeadJob implements ShouldQueue
             );
 
             // ─────────────────────────────────────────────
-            // PYTHON PATH
+            // PYTHON PATH & SCRIPT PATH (DYNAMIC)
             // ─────────────────────────────────────────────
 
-            $pythonPath =
-                "C:\\Users\\91756\\AppData\\Local\\Programs\\Python\\Python312\\python.exe";
+            $pythonPath = env('PYTHON_PATH', 'python');
 
-            // ─────────────────────────────────────────────
-            // SCRIPT PATH
-            // ─────────────────────────────────────────────
-
-            $scriptPath =
-                "D:\\internship\\google-maps-extractor - Copy\\scraper\\main.py";
+            $scriptPath = env('SCRAPER_SCRIPT', base_path('../scraper/main.py'));
 
             $offset = (int) $this->offset;
 

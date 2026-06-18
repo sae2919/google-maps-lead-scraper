@@ -194,7 +194,7 @@
                         </a>
 
                         {{-- Delete --}}
-                        <form action="/delete-search/{{ $search->id }}" method="POST">
+                        <form action="{{ route('search.delete', $search->id) }}" method="POST">
                             @csrf
                             <button type="submit"
                                 onclick="return confirm('Delete this search?')"
@@ -260,7 +260,7 @@ async function resumeSearch(id, query, btn) {
     btn.innerText = 'Starting...';
 
     try {
-        const res  = await fetch('/resume-search/' + id, {
+        const res  = await fetch("{{ route('search.resume', '') }}/" + id, {
             method:  'POST',
             headers: {
                 'Content-Type': 'application/json',
