@@ -3,13 +3,13 @@
 # ==========================================
 FROM node:20-alpine AS node-builder
 WORKDIR /app
-COPY package*.json ./
+COPY laravel-app/package*.json ./
 RUN npm ci
-COPY resources ./resources
-COPY vite.config.js ./
-COPY tailwind.config.js ./
-COPY postcss.config.js ./
-COPY public ./public
+COPY laravel-app/resources ./resources
+COPY laravel-app/vite.config.js ./
+COPY laravel-app/tailwind.config.js ./
+COPY laravel-app/postcss.config.js ./
+COPY laravel-app/public ./public
 RUN npm run build
 
 # ==========================================
@@ -45,8 +45,8 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 # Set working directory
 WORKDIR /var/www/html
 
-# Copy project files
-COPY . .
+# Copy project files from laravel-app
+COPY laravel-app/ .
 
 # Copy built assets from Stage 1
 COPY --from=node-builder /app/public/build ./public/build
@@ -55,10 +55,10 @@ COPY --from=node-builder /app/public/build ./public/build
 ENV COMPOSER_ALLOW_SUPERUSER=1
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-# Copy configurations
-COPY docker/nginx.conf /etc/nginx/http.d/default.conf
-COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+# Copy configurations from laravel-app/docker
+COPY laravel-app/docker/nginx.conf /etc/nginx/http.d/default.conf
+COPY laravel-app/docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY laravel-app/docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 # Make entrypoint script executable
 RUN chmod +x /usr/local/bin/entrypoint.sh
