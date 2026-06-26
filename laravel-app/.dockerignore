@@ -1,0 +1,12 @@
+.git
+.venv
+node_modules
+vendor
+tests
+storage/framework/cache/data/*
+storage/framework/views/*.php
+storage/logs/*.log
+.env
+.env.*
+Dockerfile
+docker-compose.yml
