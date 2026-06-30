@@ -260,7 +260,7 @@ async function resumeSearch(id, query, btn) {
     btn.innerText = 'Starting...';
 
     try {
-        const res  = await fetch("{{ route('search.resume', '') }}/" + id, {
+        const res  = await fetch("{{ route('search.resume', ['id' => 'TEMP_ID']) }}".replace('TEMP_ID', id), {
             method:  'POST',
             headers: {
                 'Content-Type': 'application/json',
