@@ -19,18 +19,34 @@ jobs:
           script: |
             cd /var/www/laravel/laravel-app/laravel-app
 
+            echo "Pulling latest code..."
             git pull origin main
 
+            echo "Installing Composer dependencies..."
             composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev
 
-            npm ci || npm install
+            echo "Installing Node dependencies..."
+            npm install
+
+            echo "Building assets..."
             npm run build
 
+            echo "Running migrations..."
             php artisan migrate --force
 
+            echo "Clearing caches..."
             php artisan optimize:clear
+
+            echo "Caching configuration..."
             php artisan config:cache
+
+            echo "Caching events..."
             php artisan event:cache
 
+            echo "Reloading PHP..."
             sudo systemctl reload php8.3-fpm
+
+            echo "Reloading Nginx..."
             sudo systemctl reload nginx
+
+            echo "Deployment completed successfully!"
