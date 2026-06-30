@@ -148,8 +148,6 @@ Route::middleware(['auth'])
         Route::delete('/delete-search/{id}', [LeadController::class, 'deleteSearch'])
             ->name('search.delete');
 
-        Route::post('/delete-search/{id}', [LeadController::class, 'deleteSearch'])
-            ->name('search.delete');
 
         Route::get('/api/dashboard-stats', [LeadController::class, 'dashboardStats'])
             ->name('dashboard.stats');
